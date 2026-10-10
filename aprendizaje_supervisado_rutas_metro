@@ -1,0 +1,851 @@
+
+"""
+Actividad 2 - Busqueda y sistemas basados en reglas.
+
+Sistema inteligente de rutas para las lineas A y B del Metro
+de Medellin.
+
+El sistema utiliza:
+- Base de conocimiento de estaciones.
+- Reglas logicas para validar conexiones.
+- Algoritmo A* para encontrar la ruta con menos tramos.
+- Dataset simulado para entrenar una regresion lineal.
+- Matplotlib para visualizar los resultados.
+
+La regresion lineal estima el tiempo del recorrido.
+Los tiempos del dataset son simulados con fines academicos.
+"""
+
+import heapq
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+
+
+# ============================================================
+# 1. DATASET PARA ENTRENAR LA REGRESION LINEAL
+# ============================================================
+
+# Cada fila representa un escenario de viaje.
+#
+# tramos: cantidad de desplazamientos entre estaciones.
+# transferencias: cantidad de cambios de linea.
+# hora_pico: 1 si el viaje ocurre en hora pico, 0 en caso contrario.
+# tiempo_minutos: tiempo total estimado del recorrido.
+
+
+datos = pd.DataFrame({
+
+    "tramos": [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        3, 5, 8, 10, 12, 14, 16, 18, 20, 6,
+        9, 11, 15, 17, 19, 4, 7, 13, 21, 2
+    ],
+
+    "transferencias": [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+        1, 1, 1, 1, 1, 0, 0, 1, 1, 0
+    ],
+
+    "hora_pico": [
+        0, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+        1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+        0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+        0, 1, 0, 1, 0, 0, 1, 0, 1, 1
+    ],
+
+    "tiempo_minutos": [
+        3, 5, 8, 8, 12, 12, 16, 16, 20, 20,
+        24, 24, 28, 28, 32, 32, 36, 36, 40, 40,
+        12, 16, 23, 27, 31, 35, 39, 43, 47, 13,
+        24, 30, 38, 44, 48, 8, 17, 34, 52, 7
+    ]
+})
+
+print("\n========== DATASET DE VIAJES ==========")
+print(datos.to_string(index=False))
+print("\nCantidad de registros:", len(datos))
+
+
+# ============================================================
+# 2. SELECCION DE VARIABLES
+# ============================================================
+
+# Variables de entrada que el modelo utiliza para aprender.
+X = datos[
+    ["tramos", "transferencias", "hora_pico"]
+]
+
+# Variable objetivo que el modelo debe predecir.
+y = datos["tiempo_minutos"]
+
+
+# ============================================================
+# 3. DIVISION DE DATOS
+# ============================================================
+
+# Reservamos una parte de los datos para evaluar el modelo.
+X_entrenamiento, X_prueba, y_entrenamiento, y_prueba = (
+    train_test_split(
+        X,
+        y,
+        test_size=0.25,
+        random_state=42
+    )
+)
+
+
+# ============================================================
+# 4. ENTRENAMIENTO DEL MODELO DE REGRESION LINEAL
+# ============================================================
+
+# Creamos el modelo matematico.
+modelo = LinearRegression()
+
+# El modelo aprende la relacion entre las variables de entrada
+# y el tiempo de viaje registrado en el dataset.
+modelo.fit(X_entrenamiento, y_entrenamiento)
+
+print("\n========== MODELO ENTRENADO ==========")
+print("Algoritmo: Regresion lineal")
+
+# Mostramos los coeficientes aprendidos por el modelo.
+for variable, coeficiente in zip(X.columns, modelo.coef_):
+    print(f"{variable}: {coeficiente:.2f}")
+
+print("Intercepto:", round(modelo.intercept_, 2))
+
+
+# ============================================================
+# 5. EVALUACION DEL MODELO
+# ============================================================
+
+# Predecimos los tiempos de los registros reservados para prueba.
+predicciones_prueba = modelo.predict(X_prueba)
+
+# Calculamos el error absoluto medio.
+mae = mean_absolute_error(
+    y_prueba,
+    predicciones_prueba
+)
+
+# Calculamos el coeficiente de determinacion.
+r2 = r2_score(
+    y_prueba,
+    predicciones_prueba
+)
+
+print("\n========== EVALUACION DEL MODELO ==========")
+print(f"Error absoluto medio (MAE): {mae:.2f} minutos")
+print(f"Coeficiente de determinacion R2: {r2:.2f}")
+
+
+# ============================================================
+# 6. BASE DE CONOCIMIENTO DEL METRO
+# ============================================================
+
+# Estacion autorizada para cambiar entre las lineas A y B.
+ESTACION_TRANSFERENCIA = "San Antonio"
+
+# Estaciones de la linea A, de sur a norte.
+LINEA_A = [
+    "La Estrella",
+    "Sabaneta",
+    "Itagüí",
+    "Envigado",
+    "Ayurá",
+    "Aguacatala",
+    "Poblado",
+    "Industriales",
+    "Exposiciones",
+    "Alpujarra",
+    "San Antonio",
+    "Parque Berrío",
+    "Prado",
+    "Hospital",
+    "Universidad",
+    "Caribe",
+    "Tricentenario",
+    "Acevedo",
+    "Madera",
+    "Bello",
+    "Niquía"
+]
+
+# Estaciones de la linea B.
+LINEA_B = [
+    "San Antonio",
+    "Cisneros",
+    "Suramericana",
+    "Estadio",
+    "Floresta",
+    "Santa Lucía",
+    "San Javier"
+]
+
+# Diccionario que contiene las lineas disponibles.
+LINEAS = {
+    "Linea A": LINEA_A,
+    "Linea B": LINEA_B
+}
+
+# Conjunto de tramos cerrados.
+# Se pueden agregar conexiones para simular cierres.
+TRAMOS_CERRADOS = set()
+
+# Ejemplo de cierre:
+# TRAMOS_CERRADOS = {
+#     frozenset(("Poblado", "Industriales"))
+# }
+
+
+# ============================================================
+# 7. REGLAS LOGICAS
+# ============================================================
+
+# Comprueba que dos estaciones sean consecutivas en una linea.
+def regla_estaciones_consecutivas(
+    estacion_1,
+    estacion_2,
+    estaciones_linea
+):
+    posicion_1 = estaciones_linea.index(estacion_1)
+    posicion_2 = estaciones_linea.index(estacion_2)
+
+    return abs(posicion_1 - posicion_2) == 1
+
+
+# Comprueba que el tramo no se encuentre cerrado.
+def regla_tramo_disponible(estacion_1, estacion_2):
+    tramo = frozenset((estacion_1, estacion_2))
+
+    return tramo not in TRAMOS_CERRADOS
+
+
+# Autoriza la transferencia solamente en San Antonio.
+def regla_transferencia_permitida(estacion):
+    return estacion == ESTACION_TRANSFERENCIA
+
+
+# ============================================================
+# 8. CONSTRUCCION DEL GRAFO
+# ============================================================
+
+# El grafo representa las estaciones y sus conexiones.
+def construir_grafo():
+
+    grafo = {}
+
+    # Recorremos las lineas del Metro.
+    for nombre_linea, estaciones in LINEAS.items():
+
+        # Conectamos cada estacion con la siguiente.
+        for indice in range(len(estaciones) - 1):
+
+            actual = estaciones[indice]
+            siguiente = estaciones[indice + 1]
+
+            # Validamos la conexion mediante la regla logica.
+            if regla_estaciones_consecutivas(
+                actual,
+                siguiente,
+                estaciones
+            ):
+
+                grafo.setdefault(actual, [])
+                grafo.setdefault(siguiente, [])
+
+                # Registramos la conexion de ida.
+                grafo[actual].append(
+                    (siguiente, nombre_linea, 1)
+                )
+
+                # Registramos la conexion de regreso.
+                grafo[siguiente].append(
+                    (actual, nombre_linea, 1)
+                )
+
+    return grafo
+
+
+# Construimos el grafo que utiliza el algoritmo A*.
+GRAFO = construir_grafo()
+
+
+# ============================================================
+# 9. POSICIONES DE LAS ESTACIONES
+# ============================================================
+
+# Guardamos la posicion de cada estacion en sus lineas.
+POSICIONES = {}
+
+for nombre_linea, estaciones in LINEAS.items():
+
+    for posicion, estacion in enumerate(estaciones):
+
+        POSICIONES.setdefault(estacion, []).append(
+            (nombre_linea, posicion)
+        )
+
+
+# Posicion de San Antonio dentro de cada linea.
+POSICION_TRANSFERENCIA = {
+    "Linea A": LINEA_A.index(ESTACION_TRANSFERENCIA),
+    "Linea B": LINEA_B.index(ESTACION_TRANSFERENCIA)
+}
+
+
+# ============================================================
+# 10. HEURISTICA DEL ALGORITMO A*
+# ============================================================
+
+# Estima la cantidad minima de tramos restantes hasta el destino.
+def heuristica(estacion_actual, destino):
+
+    estimaciones = []
+
+    # Revisamos las lineas a las que pertenece cada estacion.
+    for linea_actual, posicion_actual in POSICIONES[estacion_actual]:
+
+        for linea_destino, posicion_destino in POSICIONES[destino]:
+
+            # Si estan en la misma linea, calculamos la distancia directa.
+            if linea_actual == linea_destino:
+
+                estimacion = abs(
+                    posicion_actual - posicion_destino
+                )
+
+            else:
+
+                # Calculamos la distancia hasta San Antonio.
+                hasta_transferencia = abs(
+                    posicion_actual
+                    - POSICION_TRANSFERENCIA[linea_actual]
+                )
+
+                # Calculamos la distancia desde San Antonio
+                # hasta la estacion de destino.
+                desde_transferencia = abs(
+                    posicion_destino
+                    - POSICION_TRANSFERENCIA[linea_destino]
+                )
+
+                estimacion = (
+                    hasta_transferencia
+                    + desde_transferencia
+                )
+
+            estimaciones.append(estimacion)
+
+    return min(estimaciones)
+
+
+# ============================================================
+# 11. BUSQUEDA DE LA MEJOR RUTA CON A*
+# ============================================================
+
+def buscar_mejor_ruta(inicio, destino):
+
+    # Cola de prioridad para explorar primero las mejores alternativas.
+    frontera = []
+
+    heapq.heappush(
+        frontera,
+        (
+            heuristica(inicio, destino),
+            0,
+            inicio,
+            [inicio],
+            []
+        )
+    )
+
+    # Costo minimo conocido para llegar a cada estacion.
+    mejor_costo = {inicio: 0}
+
+    while frontera:
+
+        _, costo_actual, estacion_actual, ruta, lineas_usadas = (
+            heapq.heappop(frontera)
+        )
+
+        # Si llegamos al destino, devolvemos el resultado.
+        if estacion_actual == destino:
+
+            return ruta, lineas_usadas, costo_actual
+
+        # Descartamos rutas que ya tienen un costo superior.
+        if costo_actual > mejor_costo.get(
+            estacion_actual,
+            float("inf")
+        ):
+            continue
+
+        # Exploramos las estaciones conectadas.
+        for vecina, linea, costo_tramo in GRAFO[estacion_actual]:
+
+            # No utilizamos conexiones cerradas.
+            if not regla_tramo_disponible(
+                estacion_actual,
+                vecina
+            ):
+                continue
+
+            nuevo_costo = costo_actual + costo_tramo
+
+            # Actualizamos si encontramos una ruta mejor.
+            if nuevo_costo < mejor_costo.get(
+                vecina,
+                float("inf")
+            ):
+
+                mejor_costo[vecina] = nuevo_costo
+
+                prioridad = (
+                    nuevo_costo
+                    + heuristica(vecina, destino)
+                )
+
+                heapq.heappush(
+                    frontera,
+                    (
+                        prioridad,
+                        nuevo_costo,
+                        vecina,
+                        ruta + [vecina],
+                        lineas_usadas + [linea]
+                    )
+                )
+
+    # No se encontro una ruta disponible.
+    return None, None, None
+
+
+# ============================================================
+# 12. FUNCIONES AUXILIARES
+# ============================================================
+
+# Devuelve las estaciones disponibles sin repetir San Antonio.
+def obtener_estaciones():
+
+    return list(dict.fromkeys(LINEA_A + LINEA_B))
+
+
+# Muestra las estaciones y solicita una seleccion valida.
+def seleccionar_estacion(mensaje, estaciones):
+
+    while True:
+
+        print(f"\n{mensaje}")
+
+        for numero, estacion in enumerate(estaciones, start=1):
+
+            print(f"{numero:2}. {estacion}")
+
+        respuesta = input(
+            "Escriba el numero de la estacion: "
+        ).strip()
+
+        # Validamos que la entrada sea un numero.
+        if respuesta.isdigit():
+
+            opcion = int(respuesta)
+
+            if 1 <= opcion <= len(estaciones):
+
+                return estaciones[opcion - 1]
+
+        print("Opcion no valida. Intente nuevamente.")
+
+
+# Identifica las transferencias entre lineas de la ruta.
+def obtener_transferencias(ruta, lineas_usadas):
+
+    transferencias = []
+
+    for indice in range(1, len(lineas_usadas)):
+
+        # Una transferencia ocurre cuando cambia la linea.
+        if lineas_usadas[indice] != lineas_usadas[indice - 1]:
+
+            estacion_cambio = ruta[indice]
+
+            # Verificamos la regla de transferencia.
+            if regla_transferencia_permitida(estacion_cambio):
+
+                transferencias.append(estacion_cambio)
+
+    return transferencias
+
+# ============================================================
+# 13. GRAFICA DE LA EVALUACION DEL MODELO
+# ============================================================
+
+def graficar_evaluacion(
+    total_tramos,
+    total_transferencias,
+    hora_pico,
+    tiempo_estimado
+):
+
+    plt.figure(figsize=(9, 5))
+
+    # Tiempo real de referencia: 2 minutos por cada tramo.
+    tiempos_reales = datos["tramos"] * 2
+
+    # Tiempos predichos por el modelo para los registros.
+    predicciones = modelo.predict(
+        datos[["tramos", "transferencias", "hora_pico"]]
+    )
+
+    # Comparamos el tiempo de referencia con el predicho.
+    plt.scatter(
+        tiempos_reales,
+        predicciones,
+        color="blue",
+        alpha=0.7,
+        label="Predicciones del modelo"
+    )
+
+    # Línea de referencia: 2 minutos por tramo.
+    minimo = 0
+    maximo = max(
+        max(tiempos_reales),
+        max(predicciones),
+        tiempo_estimado
+    ) + 5
+
+    plt.plot(
+        [minimo, maximo],
+        [minimo, maximo],
+        "r-",
+        label="Referencia: 2 minutos por tramo"
+    )
+
+    # Marcamos la ruta seleccionada con una X roja.
+    tiempo_referencia = total_tramos * 2
+
+    plt.scatter(
+        tiempo_referencia,
+        tiempo_estimado,
+        color="red",
+        marker="x",
+        s=110,
+        zorder=5,
+        label="Ruta seleccionada"
+    )
+
+    # Mostramos los datos de la ruta junto a la X.
+    plt.annotate(
+        f"{total_tramos} tramos\\n"
+        f"Referencia: {tiempo_referencia:.1f} min\\n"
+        f"Prediccion: {tiempo_estimado:.1f} min",
+        xy=(tiempo_referencia, tiempo_estimado),
+        xytext=(10, 12),
+        textcoords="offset points",
+        color="red",
+        fontweight="light"
+    )
+
+    plt.xlabel("Tiempo de referencia (2 min por tramo)")
+    plt.ylabel("Tiempo predicho por regresion (minutos)")
+    plt.title("Tiempos de referencia vs. predicciones")
+
+    plt.xlim(left=0)
+    plt.ylim(bottom=0)
+
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+# ============================================================
+# 14. GRAFICA DEL TIEMPO ESTIMADO PARA LA RUTA SELECCIONADA
+# ============================================================
+
+def graficar_ruta(
+    total_tramos,
+    total_transferencias,
+    hora_pico,
+    tiempo_estimado
+):
+
+    # Creamos escenarios con diferente cantidad de tramos.
+    # Conservamos las transferencias y la hora ingresadas.
+    tramos_grafica = list(
+        range(1, max(25, total_tramos + 5) + 1)
+    )
+
+    escenarios = pd.DataFrame({
+
+        "tramos": tramos_grafica,
+
+        "transferencias": [
+            total_transferencias
+        ] * len(tramos_grafica),
+
+        "hora_pico": [
+            hora_pico
+        ] * len(tramos_grafica)
+
+    })
+
+    # Estimamos el tiempo para cada cantidad de tramos.
+    tiempos_estimados = modelo.predict(escenarios)
+
+    plt.figure(figsize=(10, 6))
+
+    # Mostramos los datos del dataset.
+    plt.scatter(
+        datos["tramos"],
+        datos["tiempo_minutos"],
+        color="blue",
+        alpha=0.5,
+        label="Datos del dataset"
+    )
+
+    # Dibujamos la tendencia calculada por la regresion.
+    plt.plot(
+        tramos_grafica,
+        tiempos_estimados,
+        color="green",
+        linewidth=2,
+        label="Regresion lineal"
+    )
+
+    # Marcamos con una X el recorrido seleccionado.
+    plt.scatter(
+        total_tramos,
+        tiempo_estimado,
+        color="red",
+        marker="x",
+        s=110,
+        zorder=5,
+        label="Ruta seleccionada"
+    )
+
+    # Mostramos el tiempo estimado junto a la X.
+    plt.annotate(
+        f"{tiempo_estimado:.1f} minutos",
+        xy=(total_tramos, tiempo_estimado),
+        xytext=(10, 12),
+        textcoords="offset points",
+        color="red",
+        fontweight="light"
+    )
+
+    plt.xlabel("Cantidad de tramos")
+    plt.ylabel("Tiempo estimado (minutos)")
+
+    plt.title(
+        "Tiempo estimado de viaje mediante regresion lineal"
+    )
+
+    plt.xlim(
+        0,
+        max(25, total_tramos + 5)
+    )
+
+    plt.ylim(
+        bottom=0
+    )
+
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+
+# ============================================================
+# 15. FUNCION PRINCIPAL DEL SISTEMA
+# ============================================================
+
+def ejecutar_sistema():
+
+    print("=" * 64)
+    print("SISTEMA INTELIGENTE DE RUTAS - METRO DE MEDELLIN")
+    print("Busqueda A* y estimacion con regresion lineal")
+    print("=" * 64)
+
+    # Mostramos las estaciones disponibles.
+    estaciones = obtener_estaciones()
+
+    # Solicitamos el inicio y el destino.
+    inicio = seleccionar_estacion(
+        "INICIO DEL RECORRIDO",
+        estaciones
+    )
+
+    destino = seleccionar_estacion(
+        "DESTINO DEL RECORRIDO",
+        estaciones
+    )
+
+    # Si ambos puntos son iguales, no es necesario desplazarse.
+    if inicio == destino:
+
+        print(
+            "\nEl inicio y el destino son iguales. "
+            "No se requiere recorrido."
+        )
+
+        return
+
+    # Ejecutamos A* para encontrar la ruta con menos tramos.
+    ruta, lineas_usadas, total_tramos = buscar_mejor_ruta(
+        inicio,
+        destino
+    )
+
+    # Validamos que exista una ruta.
+    if ruta is None:
+
+        print(
+            "\nNo existe una ruta disponible "
+            "con los tramos habilitados."
+        )
+
+        return
+
+    # Identificamos las transferencias necesarias.
+    transferencias = obtener_transferencias(
+        ruta,
+        lineas_usadas
+    )
+
+    total_transferencias = len(transferencias)
+
+    # Solicitamos la hora para definir el escenario.
+    try:
+
+        hora = int(
+            input("\nHora de salida (0-23): ")
+        )
+
+    except ValueError:
+
+        print("Debe ingresar una hora numerica.")
+        return
+
+    if not 0 <= hora <= 23:
+
+        print("La hora debe estar entre 0 y 23.")
+        return
+
+    # Clasificacion sencilla de hora pico para el ejercicio.
+    # Es una regla ilustrativa, no un horario oficial del Metro.
+    hora_pico = 1 if (
+        6 <= hora <= 9 or 16 <= hora <= 19
+    ) else 0
+
+    # --------------------------------------------------------
+    # 16. PREDICCION DEL TIEMPO CON REGRESION LINEAL
+    # --------------------------------------------------------
+
+    # Preparamos los datos de la ruta seleccionada.
+    nueva_ruta = pd.DataFrame([{
+
+        "tramos": total_tramos,
+        "transferencias": total_transferencias,
+        "hora_pico": hora_pico
+
+    }])
+
+    # El modelo estima el tiempo del recorrido.
+    tiempo_estimado = modelo.predict(nueva_ruta)[0]
+
+    # El tiempo no puede ser negativo.
+    tiempo_estimado = max(0, tiempo_estimado)
+
+    # --------------------------------------------------------
+    # 17. PRESENTACION DEL RESULTADO
+    # --------------------------------------------------------
+
+    print("\n========== RESULTADO DE LA BUSQUEDA ==========")
+
+    print("Inicio:", inicio)
+    print("Destino:", destino)
+
+    print(
+        "\nMejor ruta:",
+        " -> ".join(ruta)
+    )
+
+    print("Cantidad de tramos:", total_tramos)
+
+    print(
+        "Lineas utilizadas:",
+        " -> ".join(lineas_usadas)
+        if lineas_usadas else "Ninguna"
+    )
+
+    print(
+        "Cantidad de transferencias:",
+        total_transferencias
+    )
+
+    if transferencias:
+
+        print(
+            "Estacion de transferencia:",
+            ", ".join(transferencias)
+        )
+
+    else:
+
+        print(
+            "El recorrido no requiere cambiar de linea."
+        )
+
+    print("\n========== ESTIMACION DEL MODELO ==========")
+
+    print(
+        f"Hora de salida: {hora}:00"
+    )
+
+    print(
+        "Clasificacion de hora pico:",
+        "Si" if hora_pico else "No"
+    )
+
+    print(
+        f"Tiempo estimado de viaje: "
+        f"{tiempo_estimado:.2f} minutos"
+    )
+
+    # --------------------------------------------------------
+    # 18. MOSTRAR LAS GRAFICAS
+    # --------------------------------------------------------
+
+    # Grafica de evaluacion del modelo.
+    graficar_evaluacion(
+        total_tramos,
+        total_transferencias,
+        hora_pico,
+        tiempo_estimado
+    )
+
+    # Grafica de la ruta y su tiempo estimado.
+    graficar_ruta(
+        total_tramos,
+        total_transferencias,
+        hora_pico,
+        tiempo_estimado
+    )
+
+    # Mostrar ambas ventanas de graficas.
+    plt.show()
+
+
+# ============================================================
+# 19. EJECUCION DEL PROGRAMA
+# ============================================================
+
+if __name__ == "__main__":
+
+    ejecutar_sistema()
